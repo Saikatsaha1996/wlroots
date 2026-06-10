@@ -1,0 +1,460 @@
+From 16b0df5461eccbcd3763217cada92d6873e8b38b Mon Sep 17 00:00:00 2001
+From: saikat <ssaikatsaha1996@gmail.com>
+Date: Thu, 11 Jun 2026 01:56:30 +0530
+Subject: [PATCH] wlroots without termux-gui for termux android patch
+
+---
+ render/egl.c                | 19 +++++++++---
+ render/vulkan/renderer.c    |  5 +--
+ render/vulkan/vulkan.c      | 15 ++++++---
+ render/wlr_renderer.c       | 10 ++++++
+ types/wlr_linux_dmabuf_v1.c | 21 ++++++++++---
+ util/shm.c                  | 62 +++++++++++++++++++++++++++++++++++++
+ xcursor/xcursor.c           |  4 +--
+ xwayland/server.c           |  7 +++++
+ xwayland/sockets.c          |  8 ++---
+ 9 files changed, 130 insertions(+), 21 deletions(-)
+
+diff --git a/render/egl.c b/render/egl.c
+index 6f3e9c8..fe535c0 100644
+--- a/render/egl.c
++++ b/render/egl.c
+@@ -297,6 +297,7 @@ static bool egl_init_display(struct wlr_egl *egl, EGLDisplay display,
+ 		check_egl_ext(display_exts_str, "EGL_EXT_create_context_robustness");
+ 
+ 	const char *device_exts_str = NULL, *driver_name = NULL;
++#ifndef __TERMUX__
+ 	if (egl->exts.EXT_device_query) {
+ 		EGLAttrib device_attrib;
+ 		if (!egl->procs.eglQueryDisplayAttribEXT(egl->display,
+@@ -338,7 +339,7 @@ static bool egl_init_display(struct wlr_egl *egl, EGLDisplay display,
+ 			}
+ 		}
+ 	}
+-
++#endif
+ 	if (!check_egl_ext(display_exts_str, "EGL_KHR_no_config_context") &&
+ 			!check_egl_ext(display_exts_str, "EGL_MESA_configless_context")) {
+ 		wlr_log(WLR_ERROR, "EGL_KHR_no_config_context or "
+@@ -454,7 +455,7 @@ static bool egl_init(struct wlr_egl *egl, EGLenum platform,
+ }
+ 
+ static bool device_has_name(const drmDevice *device, const char *name);
+-
++#ifndef __TERMUX__
+ static EGLDeviceEXT get_egl_device_from_drm_fd(struct wlr_egl *egl,
+ 		int drm_fd) {
+ 	if (egl->procs.eglQueryDevicesEXT == NULL) {
+@@ -532,7 +533,9 @@ static EGLDeviceEXT get_egl_device_from_drm_fd(struct wlr_egl *egl,
+ 
+ 	return egl_device;
+ }
++#endif
+ 
++#ifndef __TERMUX__
+ static int open_render_node(int drm_fd) {
+ 	char *render_name = drmGetRenderDeviceNameFromFd(drm_fd);
+ 	if (render_name == NULL) {
+@@ -554,6 +557,8 @@ static int open_render_node(int drm_fd) {
+ 	free(render_name);
+ 	return render_fd;
+ }
++#endif
++
+ 
+ struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd) {
+ 	bool allow_software = drm_fd < 0;
+@@ -564,6 +569,7 @@ struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd) {
+ 		return NULL;
+ 	}
+ 
++#ifndef __TERMUX__
+ 	if (egl->exts.EXT_platform_device) {
+ 		/*
+ 		 * Search for the EGL device matching the DRM fd using the
+@@ -581,8 +587,9 @@ struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd) {
+ 	} else {
+ 		wlr_log(WLR_DEBUG, "EXT_platform_device not supported");
+ 	}
+-
++#endif
+ 	if (egl->exts.KHR_platform_gbm && drm_fd >= 0) {
++#ifndef __TERMUX__
+ 		int gbm_fd = open_render_node(drm_fd);
+ 		if (gbm_fd < 0) {
+ 			wlr_log(WLR_ERROR, "Failed to open DRM render node");
+@@ -595,14 +602,18 @@ struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd) {
+ 			wlr_log(WLR_ERROR, "Failed to create GBM device");
+ 			goto error;
+ 		}
++#endif
+ 
+ 		if (egl_init(egl, EGL_PLATFORM_GBM_KHR, egl->gbm_device, allow_software)) {
+ 			wlr_log(WLR_DEBUG, "Using EGL_PLATFORM_GBM_KHR");
+ 			return egl;
+ 		}
+-
++#ifndef __TERMUX__
+ 		gbm_device_destroy(egl->gbm_device);
+ 		close(gbm_fd);
++#else
++		goto error;
++#endif
+ 	} else {
+ 		wlr_log(WLR_DEBUG, "KHR_platform_gbm not supported");
+ 	}
+diff --git a/render/vulkan/renderer.c b/render/vulkan/renderer.c
+index e87a00e..df78206 100644
+--- a/render/vulkan/renderer.c
++++ b/render/vulkan/renderer.c
+@@ -2522,6 +2522,7 @@ error:
+ 	return NULL;
+ }
+ 
++
+ struct wlr_renderer *wlr_vk_renderer_create_with_drm_fd(int drm_fd) {
+ 	wlr_log(WLR_INFO, "The vulkan renderer is only experimental and "
+ 		"not expected to be ready for daily use");
+@@ -2547,11 +2548,11 @@ struct wlr_renderer *wlr_vk_renderer_create_with_drm_fd(int drm_fd) {
+ 		vulkan_instance_destroy(ini);
+ 		return NULL;
+ 	}
+-
++#ifndef __TERMUX__
+ 	// Do not use the drm_fd that was passed in: we should prefer the render
+ 	// node even if a primary node was provided
+ 	dev->drm_fd = vulkan_open_phdev_drm_fd(phdev);
+-
++#endif
+ 	return vulkan_renderer_create_for_device(dev);
+ }
+ 
+diff --git a/render/vulkan/vulkan.c b/render/vulkan/vulkan.c
+index 78bc259..3865904 100644
+--- a/render/vulkan/vulkan.c
++++ b/render/vulkan/vulkan.c
+@@ -272,13 +272,13 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd)
+ 		wlr_vk_error("Could not retrieve physical devices", res);
+ 		return VK_NULL_HANDLE;
+ 	}
+-
++#ifndef __TERMUX__
+ 	struct stat drm_stat = {0};
+ 	if (drm_fd >= 0 && fstat(drm_fd, &drm_stat) != 0) {
+ 		wlr_log_errno(WLR_ERROR, "fstat failed");
+ 		return VK_NULL_HANDLE;
+ 	}
+-
++#endif
+ 	for (uint32_t i = 0; i < num_phdevs; ++i) {
+ 		VkPhysicalDevice phdev = phdevs[i];
+ 
+@@ -312,7 +312,7 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd)
+ 			wlr_vk_error("  Could not enumerate device extensions", res);
+ 			continue;
+ 		}
+-
++#ifndef __TERMUX__
+ 		bool has_drm_props = check_extension(avail_ext_props, avail_extc,
+ 			VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME);
+ 		bool has_driver_props = check_extension(avail_ext_props, avail_extc,
+@@ -365,11 +365,18 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd)
+ 				phdev_props.deviceName);
+ 			return phdev;
+ 		}
++#else
++		if (check_extension(avail_ext_props, avail_extc, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME) &&
++				check_extension(avail_ext_props, avail_extc, VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME)) {
++			return phdev;
++		}
++#endif
+ 	}
+ 
+ 	return VK_NULL_HANDLE;
+ }
+ 
++#ifndef __TERMUX__
+ int vulkan_open_phdev_drm_fd(VkPhysicalDevice phdev) {
+ 	// vulkan_find_drm_phdev() already checks that VK_EXT_physical_device_drm
+ 	// is supported
+@@ -415,7 +422,7 @@ int vulkan_open_phdev_drm_fd(VkPhysicalDevice phdev) {
+ 	drmFreeDevice(&device);
+ 	return drm_fd;
+ }
+-
++#endif
+ static void load_device_proc(struct wlr_vk_device *dev, const char *name,
+ 		void *proc_ptr) {
+ 	void *proc = (void *)vkGetDeviceProcAddr(dev->dev, name);
+diff --git a/render/wlr_renderer.c b/render/wlr_renderer.c
+index e65314c..b9f949d 100644
+--- a/render/wlr_renderer.c
++++ b/render/wlr_renderer.c
+@@ -7,7 +7,11 @@
+ #include <wlr/render/interface.h>
+ #include <wlr/render/pixman.h>
+ #include <wlr/render/wlr_renderer.h>
++
++#ifndef __TERMUX__
+ #include <wlr/types/wlr_drm.h>
++#endif
++
+ #include <wlr/types/wlr_linux_dmabuf_v1.h>
+ #include <wlr/types/wlr_shm.h>
+ #include <wlr/util/box.h>
+@@ -85,7 +89,9 @@ bool wlr_renderer_init_wl_display(struct wlr_renderer *r,
+ 	}
+ 
+ 	if (wlr_renderer_get_texture_formats(r, WLR_BUFFER_CAP_DMABUF) != NULL &&
++#ifndef __TERMUX__
+ 			wlr_renderer_get_drm_fd(r) >= 0 &&
++#endif
+ 			wlr_linux_dmabuf_v1_create_with_renderer(wl_display, 4, r) == NULL) {
+ 		return false;
+ 	}
+@@ -93,6 +99,7 @@ bool wlr_renderer_init_wl_display(struct wlr_renderer *r,
+ 	return true;
+ }
+ 
++#ifndef __TERMUX__
+ static int open_drm_render_node(void) {
+ 	uint32_t flags = 0;
+ 	int devices_len = drmGetDevices2(flags, NULL, 0);
+@@ -193,6 +200,9 @@ static bool open_preferred_drm_fd(struct wlr_backend *backend, int *drm_fd_ptr,
+ 	}
+ 
+ 	return false;
++#else
++	return true;
++#endif
+ }
+ 
+ static void log_creation_failure(bool is_auto, const char *msg) {
+diff --git a/types/wlr_linux_dmabuf_v1.c b/types/wlr_linux_dmabuf_v1.c
+index 3165e88..52a5ba6 100644
+--- a/types/wlr_linux_dmabuf_v1.c
++++ b/types/wlr_linux_dmabuf_v1.c
+@@ -890,14 +890,15 @@ static bool set_default_feedback(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
+ 	if (compiled == NULL) {
+ 		return false;
+ 	}
+-
++#ifndef __TERMUX__
+ 	drmDevice *device = NULL;
+ 	if (drmGetDeviceFromDevId(feedback->main_device, 0, &device) != 0) {
+ 		wlr_log_errno(WLR_ERROR, "drmGetDeviceFromDevId failed");
+ 		goto error_compiled;
+ 	}
+-
++#endif
+ 	int main_device_fd = -1;
++#ifndef __TERMUX__
+ 	if (device->available_nodes & (1 << DRM_NODE_RENDER)) {
+ 		const char *name = device->nodes[DRM_NODE_RENDER];
+ 		main_device_fd = open(name, O_RDWR | O_CLOEXEC);
+@@ -915,7 +916,7 @@ static bool set_default_feedback(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
+ 			"skipping DMA-BUF import checks", device->nodes[DRM_NODE_PRIMARY]);
+ 		drmFreeDevice(&device);
+ 	}
+-
++#endif
+ 	size_t tranches_len =
+ 		feedback->tranches.size / sizeof(struct wlr_linux_dmabuf_feedback_v1_tranche);
+ 	const struct wlr_linux_dmabuf_feedback_v1_tranche *tranches = feedback->tranches.data;
+@@ -943,8 +944,10 @@ static bool set_default_feedback(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
+ 
+ error_formats:
+ 	wlr_drm_format_set_finish(&formats);
++#ifndef __TERMUX__
+ error_compiled:
+ 	compiled_feedback_destroy(compiled);
++#endif
+ 	return false;
+ }
+ 
+@@ -1062,6 +1065,7 @@ void wlr_linux_dmabuf_feedback_v1_finish(struct wlr_linux_dmabuf_feedback_v1 *fe
+ 	wl_array_release(&feedback->tranches);
+ }
+ 
++#ifndef __TERMUX__
+ static bool devid_from_fd(int fd, dev_t *devid) {
+ 	struct stat stat;
+ 	if (fstat(fd, &stat) != 0) {
+@@ -1071,6 +1075,7 @@ static bool devid_from_fd(int fd, dev_t *devid) {
+ 	*devid = stat.st_rdev;
+ 	return true;
+ }
++#endif
+ 
+ static bool is_secondary_drm_backend(struct wlr_backend *backend) {
+ #if WLR_HAS_DRM_BACKEND
+@@ -1088,7 +1093,7 @@ bool wlr_linux_dmabuf_feedback_v1_init_with_options(struct wlr_linux_dmabuf_feed
+ 		options->output_layer_feedback_event == NULL);
+ 
+ 	*feedback = (struct wlr_linux_dmabuf_feedback_v1){0};
+-
++#ifndef __TERMUX__
+ 	int renderer_drm_fd = wlr_renderer_get_drm_fd(options->main_renderer);
+ 	if (renderer_drm_fd < 0) {
+ 		wlr_log(WLR_ERROR, "Failed to get renderer DRM FD");
+@@ -1098,6 +1103,9 @@ bool wlr_linux_dmabuf_feedback_v1_init_with_options(struct wlr_linux_dmabuf_feed
+ 	if (!devid_from_fd(renderer_drm_fd, &renderer_dev)) {
+ 		goto error;
+ 	}
++#else
++	dev_t renderer_dev = -1;
++#endif
+ 
+ 	feedback->main_device = renderer_dev;
+ 
+@@ -1125,6 +1133,7 @@ bool wlr_linux_dmabuf_feedback_v1_init_with_options(struct wlr_linux_dmabuf_feed
+ 		}
+ 	} else if (options->scanout_primary_output != NULL &&
+ 			!is_secondary_drm_backend(options->scanout_primary_output->backend)) {
++#ifndef __TERMUX__
+ 		int backend_drm_fd = wlr_backend_get_drm_fd(options->scanout_primary_output->backend);
+ 		if (backend_drm_fd < 0) {
+ 			wlr_log(WLR_ERROR, "Failed to get backend DRM FD");
+@@ -1134,7 +1143,9 @@ bool wlr_linux_dmabuf_feedback_v1_init_with_options(struct wlr_linux_dmabuf_feed
+ 		if (!devid_from_fd(backend_drm_fd, &backend_dev)) {
+ 			goto error;
+ 		}
+-
++#else
++		dev_t backend_dev = -1;
++#endif
+ 		const struct wlr_drm_format_set *scanout_formats =
+ 			wlr_output_get_primary_formats(options->scanout_primary_output, WLR_BUFFER_CAP_DMABUF);
+ 		if (scanout_formats == NULL) {
+diff --git a/util/shm.c b/util/shm.c
+index 5eb87bb..69c35ca 100644
+--- a/util/shm.c
++++ b/util/shm.c
+@@ -8,6 +8,68 @@
+ #include <wlr/config.h>
+ #include "util/shm.h"
+ 
++#ifdef __ANDROID__
++#include <alloca.h>
++static int shm_unlink(const char *name) {
++    size_t namelen;
++    char *fname;
++
++    /* Construct the filename.  */
++    while (name[0] == '/') ++name;
++
++    if (name[0] == '\0') {
++        /* The name "/" is not supported.  */
++        errno = EINVAL;
++        return -1;
++    }
++
++    namelen = strlen(name);
++    fname = (char *) alloca(sizeof("/data/data/com.termux/files/usr/tmp/") - 1 + namelen + 1);
++    memcpy(fname, "/data/data/com.termux/files/usr/tmp/", sizeof("/data/data/com.termux/files/usr/tmp/") - 1);
++    memcpy(fname + sizeof("/data/data/com.termux/files/usr/tmp/") - 1, name, namelen + 1);
++
++    return unlink(fname);
++}
++
++static int shm_open(const char *name, int oflag, mode_t mode) {
++    size_t namelen;
++    char *fname;
++    int fd;
++
++    /* Construct the filename.  */
++    while (name[0] == '/') ++name;
++
++    if (name[0] == '\0') {
++        /* The name "/" is not supported.  */
++        errno = EINVAL;
++        return -1;
++    }
++
++    namelen = strlen(name);
++    fname = (char *) alloca(sizeof("/data/data/com.termux/files/usr/tmp/") - 1 + namelen + 1);
++    memcpy(fname, "/data/data/com.termux/files/usr/tmp/", sizeof("/data/data/com.termux/files/usr/tmp/") - 1);
++    memcpy(fname + sizeof("/data/data/com.termux/files/usr/tmp/") - 1, name, namelen + 1);
++
++    fd = open(fname, oflag, mode);
++    if (fd != -1) {
++        /* We got a descriptor.  Now set the FD_CLOEXEC bit.  */
++        int flags = fcntl(fd, F_GETFD, 0);
++        flags |= FD_CLOEXEC;
++        flags = fcntl(fd, F_SETFD, flags);
++
++        if (flags == -1) {
++            /* Something went wrong.  We cannot return the descriptor.  */
++            int save_errno = errno;
++            close(fd);
++            fd = -1;
++            errno = save_errno;
++        }
++    }
++
++    return fd;
++}
++#endif
++
+ #define RANDNAME_PATTERN "/wlroots-XXXXXX"
+ 
+ static void randname(char *buf) {
+diff --git a/xcursor/xcursor.c b/xcursor/xcursor.c
+index 6627fb6..5aaf97b 100644
+--- a/xcursor/xcursor.c
++++ b/xcursor/xcursor.c
+@@ -486,11 +486,11 @@ xcursor_xc_file_load_images(FILE *file, int size)
+  */
+ 
+ #ifndef ICONDIR
+-#define ICONDIR "/usr/X11R6/lib/X11/icons"
++#define ICONDIR "/data/data/com.termux/files/usr/X11R6/lib/X11/icons"
+ #endif
+ 
+ #ifndef XCURSORPATH
+-#define XCURSORPATH "~/.icons:/usr/share/icons:/usr/share/pixmaps:~/.cursors:/usr/share/cursors/xorg-x11:"ICONDIR
++#define XCURSORPATH "~/.icons:/data/data/com.termux/files/usr/share/icons:/data/data/com.termux/files/usr/share/pixmaps:~/.cursors:/data/data/com.termux/files/usr/share/cursors/xorg-x11:"ICONDIR
+ #endif
+ 
+ #define XDG_DATA_HOME_FALLBACK "~/.local/share"
+diff --git a/xwayland/server.c b/xwayland/server.c
+index 0e8ad44..4ee4021 100644
+--- a/xwayland/server.c
++++ b/xwayland/server.c
+@@ -17,6 +17,13 @@
+ #include "config.h"
+ #include "sockets.h"
+ 
++#ifdef __TERMUX__
++#ifdef XWAYLAND_PATH
++#undef XWAYLAND_PATH
++#endif
++#define XWAYLAND_PATH "/data/data/com.termux/files/usr/bin/Xwayland"
++#endif
++
+ static void safe_close(int fd) {
+ 	if (fd >= 0) {
+ 		close(fd);
+diff --git a/xwayland/sockets.c b/xwayland/sockets.c
+index 9e287f3..1cd851a 100644
+--- a/xwayland/sockets.c
++++ b/xwayland/sockets.c
+@@ -15,11 +15,11 @@
+ #include <wlr/util/log.h>
+ #include "sockets.h"
+ 
+-static const char lock_fmt[] = "/tmp/.X%d-lock";
+-static const char socket_dir[] = "/tmp/.X11-unix";
+-static const char socket_fmt[] = "/tmp/.X11-unix/X%d";
++static const char lock_fmt[] = "/data/data/com.termux/files/usr/tmp/.X%d-lock";
++static const char socket_dir[] = "/data/data/com.termux/files/usr/tmp/.X11-unix";
++static const char socket_fmt[] = "/data/data/com.termux/files/usr/tmp/.X11-unix/X%d";
+ #ifndef __linux__
+-static const char socket_fmt2[] = "/tmp/.X11-unix/X%d_";
++static const char socket_fmt2[] = "/data/data/com.termux/files/usr/tmp/.X11-unix/X%d_";
+ #endif
+ 
+ bool set_cloexec(int fd, bool cloexec) {
+-- 
+2.53.0
+
