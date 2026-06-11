@@ -1,0 +1,116 @@
+From 59490ae3b337450f917c98ec2db27a5f25347c79 Mon Sep 17 00:00:00 2001
+From: saikat <ssaikatsaha1996@gmail.com>
+Date: Thu, 11 Jun 2026 22:31:07 +0530
+Subject: [PATCH 2/2] wlroots without termux gui for termux android patch
+
+---
+ meson.build             |  1 +
+ render/egl.c            | 10 +++++++++-
+ render/gles2/renderer.c | 11 ++++++++++-
+ render/meson.build      | 19 ++++++++++++++++---
+ 4 files changed, 36 insertions(+), 5 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index 7aea9f0..53579ca 100644
+--- a/meson.build
++++ b/meson.build
+@@ -121,6 +121,7 @@ pixman = dependency('pixman-1',
+ 	default_options: ['werror=false'],
+ )
+ math = cc.find_library('m')
++#rt = cc.find_library('rt', required: false)
+ rt = cc.find_library('rt')
+ 
+ wlr_files = []
+diff --git a/render/egl.c b/render/egl.c
+index 0f4919d..95cfc5c 100644
+--- a/render/egl.c
++++ b/render/egl.c
+@@ -5,6 +5,7 @@
+ #include <stdlib.h>
+ #include <unistd.h>
+ #include <gbm.h>
++#include <xf86drm.h>
+ #include <wlr/render/egl.h>
+ #include <wlr/util/log.h>
+ #include <wlr/util/region.h>
+@@ -204,11 +205,18 @@ static struct wlr_egl *egl_create(void) {
+ 
+ 	wlr_log(WLR_INFO, "Supported EGL client extensions: %s", client_exts_str);
+ 
++
++#ifdef __ANDROID__
++	/* Android EGL 1.5 provides platform functions natively,
++	 * not via EGL_EXT_platform_base extension. */
++	wlr_log(WLR_INFO, "Android: skipping EGL_EXT_platform_base check");
++#else
++
+ 	if (!check_egl_ext(client_exts_str, "EGL_EXT_platform_base")) {
+ 		wlr_log(WLR_ERROR, "EGL_EXT_platform_base not supported");
+ 		return NULL;
+ 	}
+-
++#endif
+ 	struct wlr_egl *egl = calloc(1, sizeof(*egl));
+ 	if (egl == NULL) {
+ 		wlr_log_errno(WLR_ERROR, "Allocation failed");
+diff --git a/render/gles2/renderer.c b/render/gles2/renderer.c
+index e362dae..1528a0b 100644
+--- a/render/gles2/renderer.c
++++ b/render/gles2/renderer.c
+@@ -540,12 +540,21 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
+ 	wlr_log(WLR_INFO, "GL vendor: %s", glGetString(GL_VENDOR));
+ 	wlr_log(WLR_INFO, "GL renderer: %s", glGetString(GL_RENDERER));
+ 	wlr_log(WLR_INFO, "Supported GLES2 extensions: %s", exts_str);
+-
++#ifdef __ANDROID__
++	/* Android uses EGL_ANDROID_image_native_buffer instead of
++	 * EGL_EXT_image_dma_buf_import for GPU buffer import. The DMA-BUF
++	 * path will be handled via AHardwareBuffer in a later phase. */
++	if (!renderer->egl->exts.EXT_image_dma_buf_import) {
++		wlr_log(WLR_INFO, "EGL_EXT_image_dma_buf_import not available "
++			"(using Android native buffer path)");
++	}
++#else
+ 	if (!renderer->egl->exts.EXT_image_dma_buf_import) {
+ 		wlr_log(WLR_ERROR, "EGL_EXT_image_dma_buf_import not supported");
+ 		free(renderer);
+ 		return NULL;
+ 	}
++#endif
+ 	if (!check_gl_ext(exts_str, "GL_EXT_texture_format_BGRA8888")) {
+ 		wlr_log(WLR_ERROR, "BGRA8888 format not supported by GLES2");
+ 		free(renderer);
+diff --git a/render/meson.build b/render/meson.build
+index 7c12540..da1836a 100644
+--- a/render/meson.build
++++ b/render/meson.build
+@@ -41,9 +41,22 @@ if 'gles2' in renderers or 'auto' in renderers
+ 			)
+ 		endif
+ 	endif
+-	gbm = dependency('gbm', required: 'gles2' in renderers)
+-	if egl.found() and gbm.found()
+-		wlr_deps += [egl, gbm]
++
++#	gbm = dependency('gbm', required: 'gles2' in renderers)
++#	if egl.found() and gbm.found()
++#		wlr_deps += [egl, gbm]
++#		wlr_files += files('egl.c')
++#		internal_features += { 'egl': true }
++#	endif
++#	subdir('gles2')
++#endif
++
++	gbm = dependency('gbm', required: host_machine.system() != 'android' and 'gles2' in renderers)
++	if egl.found() and (gbm.found() or host_machine.system() == 'android')
++		wlr_deps += [egl]
++		if gbm.found()
++			wlr_deps += [gbm]
++		endif
+ 		wlr_files += files('egl.c')
+ 		internal_features += { 'egl': true }
+ 	endif
+-- 
+2.54.0
+
