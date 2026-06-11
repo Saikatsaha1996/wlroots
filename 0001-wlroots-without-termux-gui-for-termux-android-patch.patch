@@ -1,4 +1,4 @@
-From 16b0df5461eccbcd3763217cada92d6873e8b38b Mon Sep 17 00:00:00 2001
+From 032146f61879113102e8e5ba0549e6a0163d0dec Mon Sep 17 00:00:00 2001
 From: saikat <ssaikatsaha1996@gmail.com>
 Date: Thu, 11 Jun 2026 01:56:30 +0530
 Subject: [PATCH] wlroots without termux-gui for termux android patch
@@ -16,32 +16,39 @@ Subject: [PATCH] wlroots without termux-gui for termux android patch
  9 files changed, 130 insertions(+), 21 deletions(-)
 
 diff --git a/render/egl.c b/render/egl.c
-index 6f3e9c8..fe535c0 100644
+index 6f3e9c8..0f4919d 100644
 --- a/render/egl.c
 +++ b/render/egl.c
 @@ -297,6 +297,7 @@ static bool egl_init_display(struct wlr_egl *egl, EGLDisplay display,
  		check_egl_ext(display_exts_str, "EGL_EXT_create_context_robustness");
  
  	const char *device_exts_str = NULL, *driver_name = NULL;
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  	if (egl->exts.EXT_device_query) {
  		EGLAttrib device_attrib;
  		if (!egl->procs.eglQueryDisplayAttribEXT(egl->display,
-@@ -338,7 +339,7 @@ static bool egl_init_display(struct wlr_egl *egl, EGLDisplay display,
+@@ -324,7 +325,6 @@ static bool egl_init_display(struct wlr_egl *egl, EGLDisplay display,
+ 			check_egl_ext(device_exts_str, "EGL_EXT_device_drm");
+ 		egl->exts.EXT_device_drm_render_node =
+ 			check_egl_ext(device_exts_str, "EGL_EXT_device_drm_render_node");
+-
+ 		// The only way a non-DRM device is selected is when the user
+ 		// explicitly picks software rendering
+ 		if (check_egl_ext(device_exts_str, "EGL_MESA_device_software")) {
+@@ -338,6 +338,7 @@ static bool egl_init_display(struct wlr_egl *egl, EGLDisplay display,
  			}
  		}
  	}
--
 +#endif
+ 
  	if (!check_egl_ext(display_exts_str, "EGL_KHR_no_config_context") &&
  			!check_egl_ext(display_exts_str, "EGL_MESA_configless_context")) {
- 		wlr_log(WLR_ERROR, "EGL_KHR_no_config_context or "
 @@ -454,7 +455,7 @@ static bool egl_init(struct wlr_egl *egl, EGLenum platform,
  }
  
  static bool device_has_name(const drmDevice *device, const char *name);
 -
-+#ifndef __TERMUX__
++#if !defined(__ANDROID__) || !defined(__TERMUX__)
  static EGLDeviceEXT get_egl_device_from_drm_fd(struct wlr_egl *egl,
  		int drm_fd) {
  	if (egl->procs.eglQueryDevicesEXT == NULL) {
@@ -51,7 +58,7 @@ index 6f3e9c8..fe535c0 100644
  }
 +#endif
  
-+#ifndef __TERMUX__
++#if !defined(__ANDROID__) || !defined(__TERMUX__)
  static int open_render_node(int drm_fd) {
  	char *render_name = drmGetRenderDeviceNameFromFd(drm_fd);
  	if (render_name == NULL) {
@@ -68,7 +75,7 @@ index 6f3e9c8..fe535c0 100644
  		return NULL;
  	}
  
-+#ifndef __TERMUX__
++#if !defined(__ANDROID__) || !defined(__TERMUX__)
  	if (egl->exts.EXT_platform_device) {
  		/*
  		 * Search for the EGL device matching the DRM fd using the
@@ -79,7 +86,7 @@ index 6f3e9c8..fe535c0 100644
 -
 +#endif
  	if (egl->exts.KHR_platform_gbm && drm_fd >= 0) {
-+#ifndef __TERMUX__
++#if !defined(__ANDROID__) || !defined(__TERMUX__)
  		int gbm_fd = open_render_node(drm_fd);
  		if (gbm_fd < 0) {
  			wlr_log(WLR_ERROR, "Failed to open DRM render node");
@@ -94,7 +101,7 @@ index 6f3e9c8..fe535c0 100644
  			return egl;
  		}
 -
-+#ifndef __TERMUX__
++#if !defined(__ANDROID__) || !defined(__TERMUX__)
  		gbm_device_destroy(egl->gbm_device);
  		close(gbm_fd);
 +#else
@@ -104,7 +111,7 @@ index 6f3e9c8..fe535c0 100644
  		wlr_log(WLR_DEBUG, "KHR_platform_gbm not supported");
  	}
 diff --git a/render/vulkan/renderer.c b/render/vulkan/renderer.c
-index e87a00e..df78206 100644
+index e87a00e..87c85af 100644
 --- a/render/vulkan/renderer.c
 +++ b/render/vulkan/renderer.c
 @@ -2522,6 +2522,7 @@ error:
@@ -120,7 +127,7 @@ index e87a00e..df78206 100644
  		return NULL;
  	}
 -
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  	// Do not use the drm_fd that was passed in: we should prefer the render
  	// node even if a primary node was provided
  	dev->drm_fd = vulkan_open_phdev_drm_fd(phdev);
@@ -130,7 +137,7 @@ index e87a00e..df78206 100644
  }
  
 diff --git a/render/vulkan/vulkan.c b/render/vulkan/vulkan.c
-index 78bc259..3865904 100644
+index 78bc259..e21b96b 100644
 --- a/render/vulkan/vulkan.c
 +++ b/render/vulkan/vulkan.c
 @@ -272,13 +272,13 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd)
@@ -138,7 +145,7 @@ index 78bc259..3865904 100644
  		return VK_NULL_HANDLE;
  	}
 -
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  	struct stat drm_stat = {0};
  	if (drm_fd >= 0 && fstat(drm_fd, &drm_stat) != 0) {
  		wlr_log_errno(WLR_ERROR, "fstat failed");
@@ -154,7 +161,7 @@ index 78bc259..3865904 100644
  			continue;
  		}
 -
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  		bool has_drm_props = check_extension(avail_ext_props, avail_extc,
  			VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME);
  		bool has_driver_props = check_extension(avail_ext_props, avail_extc,
@@ -173,7 +180,7 @@ index 78bc259..3865904 100644
  	return VK_NULL_HANDLE;
  }
  
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  int vulkan_open_phdev_drm_fd(VkPhysicalDevice phdev) {
  	// vulkan_find_drm_phdev() already checks that VK_EXT_physical_device_drm
  	// is supported
@@ -187,7 +194,7 @@ index 78bc259..3865904 100644
  		void *proc_ptr) {
  	void *proc = (void *)vkGetDeviceProcAddr(dev->dev, name);
 diff --git a/render/wlr_renderer.c b/render/wlr_renderer.c
-index e65314c..b9f949d 100644
+index e65314c..7c90662 100644
 --- a/render/wlr_renderer.c
 +++ b/render/wlr_renderer.c
 @@ -7,7 +7,11 @@
@@ -195,7 +202,7 @@ index e65314c..b9f949d 100644
  #include <wlr/render/pixman.h>
  #include <wlr/render/wlr_renderer.h>
 +
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  #include <wlr/types/wlr_drm.h>
 +#endif
 +
@@ -206,7 +213,7 @@ index e65314c..b9f949d 100644
  	}
  
  	if (wlr_renderer_get_texture_formats(r, WLR_BUFFER_CAP_DMABUF) != NULL &&
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  			wlr_renderer_get_drm_fd(r) >= 0 &&
 +#endif
  			wlr_linux_dmabuf_v1_create_with_renderer(wl_display, 4, r) == NULL) {
@@ -216,7 +223,7 @@ index e65314c..b9f949d 100644
  	return true;
  }
  
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  static int open_drm_render_node(void) {
  	uint32_t flags = 0;
  	int devices_len = drmGetDevices2(flags, NULL, 0);
@@ -231,7 +238,7 @@ index e65314c..b9f949d 100644
  
  static void log_creation_failure(bool is_auto, const char *msg) {
 diff --git a/types/wlr_linux_dmabuf_v1.c b/types/wlr_linux_dmabuf_v1.c
-index 3165e88..52a5ba6 100644
+index 3165e88..348ab58 100644
 --- a/types/wlr_linux_dmabuf_v1.c
 +++ b/types/wlr_linux_dmabuf_v1.c
 @@ -890,14 +890,15 @@ static bool set_default_feedback(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
@@ -239,7 +246,7 @@ index 3165e88..52a5ba6 100644
  		return false;
  	}
 -
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  	drmDevice *device = NULL;
  	if (drmGetDeviceFromDevId(feedback->main_device, 0, &device) != 0) {
  		wlr_log_errno(WLR_ERROR, "drmGetDeviceFromDevId failed");
@@ -248,7 +255,7 @@ index 3165e88..52a5ba6 100644
 -
 +#endif
  	int main_device_fd = -1;
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  	if (device->available_nodes & (1 << DRM_NODE_RENDER)) {
  		const char *name = device->nodes[DRM_NODE_RENDER];
  		main_device_fd = open(name, O_RDWR | O_CLOEXEC);
@@ -265,7 +272,7 @@ index 3165e88..52a5ba6 100644
  
  error_formats:
  	wlr_drm_format_set_finish(&formats);
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  error_compiled:
  	compiled_feedback_destroy(compiled);
 +#endif
@@ -276,7 +283,7 @@ index 3165e88..52a5ba6 100644
  	wl_array_release(&feedback->tranches);
  }
  
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  static bool devid_from_fd(int fd, dev_t *devid) {
  	struct stat stat;
  	if (fstat(fd, &stat) != 0) {
@@ -293,7 +300,7 @@ index 3165e88..52a5ba6 100644
  
  	*feedback = (struct wlr_linux_dmabuf_feedback_v1){0};
 -
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  	int renderer_drm_fd = wlr_renderer_get_drm_fd(options->main_renderer);
  	if (renderer_drm_fd < 0) {
  		wlr_log(WLR_ERROR, "Failed to get renderer DRM FD");
@@ -311,7 +318,7 @@ index 3165e88..52a5ba6 100644
  		}
  	} else if (options->scanout_primary_output != NULL &&
  			!is_secondary_drm_backend(options->scanout_primary_output->backend)) {
-+#ifndef __TERMUX__
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
  		int backend_drm_fd = wlr_backend_get_drm_fd(options->scanout_primary_output->backend);
  		if (backend_drm_fd < 0) {
  			wlr_log(WLR_ERROR, "Failed to get backend DRM FD");
