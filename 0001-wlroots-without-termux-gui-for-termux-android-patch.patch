@@ -1,19 +1,19 @@
-From 032146f61879113102e8e5ba0549e6a0163d0dec Mon Sep 17 00:00:00 2001
+From dda0d1f541ebc232c9857484cc1f70d25ec2913d Mon Sep 17 00:00:00 2001
 From: saikat <ssaikatsaha1996@gmail.com>
-Date: Thu, 11 Jun 2026 01:56:30 +0530
-Subject: [PATCH] wlroots without termux-gui for termux android patch
+Date: Thu, 11 Jun 2026 19:22:44 +0530
+Subject: [PATCH] wlroots without termux gui for termux android patch
 
 ---
  render/egl.c                | 19 +++++++++---
  render/vulkan/renderer.c    |  5 +--
  render/vulkan/vulkan.c      | 15 ++++++---
- render/wlr_renderer.c       | 10 ++++++
+ render/wlr_renderer.c       | 12 +++++++
  types/wlr_linux_dmabuf_v1.c | 21 ++++++++++---
  util/shm.c                  | 62 +++++++++++++++++++++++++++++++++++++
  xcursor/xcursor.c           |  4 +--
  xwayland/server.c           |  7 +++++
  xwayland/sockets.c          |  8 ++---
- 9 files changed, 130 insertions(+), 21 deletions(-)
+ 9 files changed, 132 insertions(+), 21 deletions(-)
 
 diff --git a/render/egl.c b/render/egl.c
 index 6f3e9c8..0f4919d 100644
@@ -111,7 +111,7 @@ index 6f3e9c8..0f4919d 100644
  		wlr_log(WLR_DEBUG, "KHR_platform_gbm not supported");
  	}
 diff --git a/render/vulkan/renderer.c b/render/vulkan/renderer.c
-index e87a00e..87c85af 100644
+index e87a00e..025bb0d 100644
 --- a/render/vulkan/renderer.c
 +++ b/render/vulkan/renderer.c
 @@ -2522,6 +2522,7 @@ error:
@@ -137,7 +137,7 @@ index e87a00e..87c85af 100644
  }
  
 diff --git a/render/vulkan/vulkan.c b/render/vulkan/vulkan.c
-index 78bc259..e21b96b 100644
+index 78bc259..15df551 100644
 --- a/render/vulkan/vulkan.c
 +++ b/render/vulkan/vulkan.c
 @@ -272,13 +272,13 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd)
@@ -194,7 +194,7 @@ index 78bc259..e21b96b 100644
  		void *proc_ptr) {
  	void *proc = (void *)vkGetDeviceProcAddr(dev->dev, name);
 diff --git a/render/wlr_renderer.c b/render/wlr_renderer.c
-index e65314c..7c90662 100644
+index e65314c..6b4656b 100644
 --- a/render/wlr_renderer.c
 +++ b/render/wlr_renderer.c
 @@ -7,7 +7,11 @@
@@ -227,7 +227,19 @@ index e65314c..7c90662 100644
  static int open_drm_render_node(void) {
  	uint32_t flags = 0;
  	int devices_len = drmGetDevices2(flags, NULL, 0);
-@@ -193,6 +200,9 @@ static bool open_preferred_drm_fd(struct wlr_backend *backend, int *drm_fd_ptr,
+@@ -138,9 +145,11 @@ out:
+ 
+ 	return fd;
+ }
++#endif
+ 
+ static bool open_preferred_drm_fd(struct wlr_backend *backend, int *drm_fd_ptr,
+ 		bool *own_drm_fd) {
++#if !(defined(__ANDROID__) && defined(__TERMUX__))
+ 	if (*drm_fd_ptr >= 0) {
+ 		return true;
+ 	}
+@@ -193,6 +202,9 @@ static bool open_preferred_drm_fd(struct wlr_backend *backend, int *drm_fd_ptr,
  	}
  
  	return false;
@@ -238,7 +250,7 @@ index e65314c..7c90662 100644
  
  static void log_creation_failure(bool is_auto, const char *msg) {
 diff --git a/types/wlr_linux_dmabuf_v1.c b/types/wlr_linux_dmabuf_v1.c
-index 3165e88..348ab58 100644
+index 3165e88..b852976 100644
 --- a/types/wlr_linux_dmabuf_v1.c
 +++ b/types/wlr_linux_dmabuf_v1.c
 @@ -890,14 +890,15 @@ static bool set_default_feedback(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
@@ -463,5 +475,5 @@ index 9e287f3..1cd851a 100644
  
  bool set_cloexec(int fd, bool cloexec) {
 -- 
-2.53.0
+2.54.0
 
